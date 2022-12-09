@@ -77,7 +77,7 @@ enum cpu_isa_bit_t : unsigned {
     prefer_ymm_bit = 1u << (cpu_isa_total_bits - 1),
 };
 
-dnnl_cpu_isa_hints_t DNNL_API get_cpu_isa_hints(bool soft = false);
+dnnl_cpu_isa_hints_t DNNL_API get_cpu_isa_hints(bool soft = false) { return dnnl_cpu_isa_no_hints; }
 status_t set_cpu_isa_hints(dnnl_cpu_isa_hints_t isa_hints);
 
 namespace cpu_isa_hints_utils {
@@ -151,7 +151,7 @@ enum class cpu_isa_cmp_t {
 const char *get_isa_info();
 
 cpu_isa_t get_max_cpu_isa();
-cpu_isa_t DNNL_API get_max_cpu_isa_mask(bool soft = false);
+cpu_isa_t DNNL_API get_max_cpu_isa_mask(bool soft = false) { return isa_all; }
 status_t set_max_cpu_isa(dnnl_cpu_isa_t isa);
 dnnl_cpu_isa_t get_effective_cpu_isa();
 
@@ -311,7 +311,7 @@ int get_target_palette();
 int get_max_tiles(int palette);
 int get_max_column_bytes(int palette);
 int get_max_rows(int palette);
-bool DNNL_API is_available();
+bool DNNL_API is_available() { return false; }
 
 } // namespace amx
 
