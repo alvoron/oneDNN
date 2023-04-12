@@ -1555,6 +1555,8 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.is_resrc_depthwise = jcp.is_depthwise && jcp.stride_w < jcp.kw
             && jcp.kw < 4 && jcp.dilate_w == 0;
 
+    jcp.with_quantization = attr.post_ops_.find(primitive_kind::quantization) != -1;
+
     if (jcp.is_depthwise) {
         jcp.max_regs_ur = 31 - jcp.is_fast_depthwise - !jcp.is_resrc_depthwise
                 - (jcp.signed_input || jcp.with_input_zp) - (!jcp.has_vnni)
@@ -1662,7 +1664,6 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
         jcp.sum_dt = post_ops.get_sum_dt(jcp.dst_dt);
 
     jcp.with_depthwise = post_ops.find(primitive_kind::depthwise) != -1;
-    jcp.with_quantization = post_ops.find(primitive_kind::quantization) != -1;
 
     jcp.post_ops = post_ops;
 
