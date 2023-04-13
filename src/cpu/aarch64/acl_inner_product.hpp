@@ -90,10 +90,10 @@ struct acl_inner_product_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             using namespace data_type;
-            const bool is_fp16_ok = expect_data_types(f16, f16, f16, f16, undef)
+            const bool is_fp16_ok = expect_data_types(f16, f16, f16, f16, data_type::undef)
                     && attr()->has_default_values(
                             primitive_attr_t::skip_mask_t::post_ops, f16);
-            const bool is_fp32_ok = expect_data_types(f32, f32, f32, f32, undef)
+            const bool is_fp32_ok = expect_data_types(f32, f32, f32, f32, data_type::undef)
                     && attr()->has_default_values(
                             primitive_attr_t::skip_mask_t::post_ops, f32);
             const bool ok = is_fwd() && !has_zero_dim_memory()

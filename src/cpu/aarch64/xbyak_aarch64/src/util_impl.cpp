@@ -57,7 +57,7 @@ void Cpu::setCacheHierarchy() {
      */
 
 // _SC_LEVEL<L>_DCACHE_SIZE macros are not defined on macOS.
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(_WIN32)
 #define GET_CACHE_SIZE(ID) 0
 #else
 #define GET_CACHE_SIZE(ID) sysconf(ID)
@@ -124,6 +124,7 @@ void Cpu::setSysRegVal() {
 #endif
 }
 
+#ifdef __linux__
 /**
  * Return directory path
  * @param[in] path ex. /sys/devices/system/node/node
@@ -154,6 +155,7 @@ int Cpu::getRegEx(char *buf, const char *path, const char *regex) {
 
   return 0;
 }
+#endif
 
 int Cpu::getFilePathMaxTailNumPlus1(const char *path) {
 #ifdef __linux__

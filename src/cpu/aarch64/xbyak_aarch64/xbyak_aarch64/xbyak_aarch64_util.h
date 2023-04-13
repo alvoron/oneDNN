@@ -17,14 +17,14 @@
 #ifndef XBYAK_AARCH64_UTIL_H_
 #define XBYAK_AARCH64_UTIL_H_
 
-#include <dirent.h>
-#include <regex.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #ifdef __linux__
+#include <dirent.h>
+#include <regex.h>
 #include <sys/auxv.h>
 #include <sys/prctl.h>
 #include <unistd.h>
@@ -133,7 +133,9 @@ private:
   void setCacheHierarchy();
   void setNumCores();
   void setSysRegVal();
+#ifdef __linux__
   int getRegEx(char *buf, const char *path, const char *regex);
+#endif
   int getFilePathMaxTailNumPlus1(const char *path);
 
 public:
