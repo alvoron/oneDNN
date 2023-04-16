@@ -257,6 +257,7 @@ private:
 	void setCacheHierarchy()
 	{
 		if (!has(tINTEL)) return;
+#if 0
 		const uint32_t NO_CACHE = 0;
 		const uint32_t DATA_CACHE = 1;
 //		const uint32_t INSTRUCTION_CACHE = 2;
@@ -300,6 +301,7 @@ private:
 				dataCacheLevels_++;
 			}
 		}
+#endif
 	}
 
 public:

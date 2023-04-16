@@ -222,13 +222,13 @@ protected:
         if ((f) != status::success) return false; \
     } while (0)
         if (src_md.format_kind == format_kind::any
-                && !utils::one_of(src_tag, any, undef))
+                && !utils::one_of(src_tag, any, data_type::undef))
             IS_OK(memory_desc_init_by_tag(src_md, src_tag));
         if (dst_md.format_kind == format_kind::any
-                && !utils::one_of(dst_tag, any, undef))
+                && !utils::one_of(dst_tag, any, data_type::undef))
             IS_OK(memory_desc_init_by_tag(dst_md, dst_tag));
         if (wei_md.format_kind == format_kind::any
-                && !utils::one_of(wei_tag, any, undef))
+                && !utils::one_of(wei_tag, any, data_type::undef))
             IS_OK(memory_desc_init_by_tag(wei_md, wei_tag));
         if (with_bias() && bia_md.format_kind == format_kind::any)
             IS_OK(memory_desc_init_by_tag(bia_md, x));

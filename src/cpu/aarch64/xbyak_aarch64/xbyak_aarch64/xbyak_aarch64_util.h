@@ -17,8 +17,8 @@
 #ifndef XBYAK_AARCH64_UTIL_H_
 #define XBYAK_AARCH64_UTIL_H_
 
-#include <dirent.h>
-#include <regex.h>
+// #include <dirent.h>
+// #include <regex.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
