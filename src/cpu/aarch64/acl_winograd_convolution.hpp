@@ -78,12 +78,10 @@ struct acl_wino_convolution_fwd_t : public primitive_t {
 
         status_t init(engine_t *engine) {
             using namespace data_type;
-            const bool is_fp16_ok
-                    = expect_data_types(f16, f16, f16, f16, data_type::undef)
+            const bool is_fp16_ok = expect_data_types(f16, f16, f16, f16, undef)
                     && attr()->has_default_values(
                             primitive_attr_t::skip_mask_t::post_ops, f16);
-            const bool is_fp32_ok
-                    = expect_data_types(f32, f32, f32, f32, data_type::undef)
+            const bool is_fp32_ok = expect_data_types(f32, f32, f32, f32, undef)
                     && attr()->has_default_values(
                             primitive_attr_t::skip_mask_t::post_ops, f32);
             bool ok = is_fwd()
