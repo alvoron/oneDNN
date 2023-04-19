@@ -166,7 +166,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
                 && simple_impl_desc_init(p, nullptr)
                 && prb_has_small_strides(p);
 
-        return ok;
+        //return ok;
+        return false;
     }
 
     XReg o_addr(int o_off, bool with_type_multiplier = true) {
