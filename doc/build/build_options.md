@@ -10,7 +10,7 @@ oneDNN supports the following build-time options.
 | ONEDNN_GPU_RUNTIME              | **NONE**, OCL, SYCL                        | Defines the offload runtime for GPU engines                                                     |
 | ONEDNN_BUILD_EXAMPLES           | **ON**, OFF                                | Controls building the examples                                                                  |
 | ONEDNN_BUILD_TESTS              | **ON**, OFF                                | Controls building the tests                                                                     |
-| ONEDNN_BUILD_GRAPH              | ON, **OFF**                                | Controls building graph component (experimental)                                                |
+| ONEDNN_BUILD_GRAPH              | **ON**, OFF                                | Controls building graph component                                                               |
 | ONEDNN_ENABLE_GRAPH_DUMP        | ON, **OFF**                                | Controls dumping graph artifacts                                                                |
 | ONEDNN_ARCH_OPT_FLAGS           | *compiler flags*                           | Specifies compiler optimization flags (see warning note below)                                  |
 | ONEDNN_ENABLE_CONCURRENT_EXEC   | ON, **OFF**                                | Disables sharing a common scratchpad between primitives in #dnnl::scratchpad_mode::library mode |
@@ -282,8 +282,8 @@ $ cmake -DONEDNN_GPU_RUNTIME=OCL -DOPENCLROOT=/path/to/opencl/sdk ..
 
 The graph component can be enabled via the build option `ONEDNN_BUILD_GRAPH`.
 But the build option does not work with some values of other build options.
-Specifying the options and values simutanously in one build will lead to a CMake
-error.
+Specifying the options and values simultaneously in one build will lead to a
+CMake error.
 
 | CMake Option            | Value          |
 |:------------------------|:---------------|

@@ -56,13 +56,15 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
                     != format_tag::undef);
             is_blocked = (src_d.matches_one_of_tag(nCw16c, nChw16c, nCdhw16c)
                     != format_tag::undef);
+            is_nchw = (src_d.matches_one_of_tag(nc, ncw, nchw, ncdhw)
+                    != format_tag::undef);
 
             bool ok = is_fwd()
                     && IMPLICATION(
                             (is_blocked || is_nhwc), axis_size() == buffer_size)
                     && !memory_desc_ndims_ok(src_md(), dst_md())
                     && axis() == src_d.ndims() - 1
-                    && (src_d.is_plain() || is_blocked || is_nhwc)
+                    && (is_nchw || is_blocked || is_nhwc)
                     && utils::one_of(src_dt, f32, f16, bf16, u8, s8)
                     && utils::one_of(dst_dt, f32, f16, bf16, u8, s8)
                     && IMPLICATION(utils::one_of(f16, src_dt, dst_dt),
@@ -78,9 +80,10 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
                 return status::unimplemented;
             }
 
-            if (is_nhwc || is_blocked) {
-                group_size = subgroup_size * (axis_size() / buffer_size);
-            } else {
+            group_size
+                    = subgroup_size * utils::div_up(axis_size(), buffer_size);
+
+            if (axis_size() % buffer_size != 0 && is_nchw) {
                 group_size = subgroup_size;
             }
 
@@ -100,6 +103,7 @@ struct gen9_softmax_fwd_t : public gpu_primitive_t {
         }
 
         bool is_nhwc = false;
+        bool is_nchw = false;
         bool is_blocked = false;
         bool is_aligned = false;
         size_t gws[3] = {};

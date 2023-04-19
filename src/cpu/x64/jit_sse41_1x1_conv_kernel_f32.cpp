@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2022 Intel Corporation
+* Copyright 2017-2023 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -116,8 +116,9 @@ void jit_sse41_1x1_conv_kernel_f32::generate_bcast_loop(int load_loop_blk) {
 }
 
 size_t jit_sse41_1x1_conv_kernel_f32::get_fwd_output_ptr_l_off(
-        int i, int j, int n) const {
-    return i * get_output_i_offset(jcp) + j * get_output_j_offset(jcp) + n * 4;
+        int i, int j, int n, bool ignore_dw_conv = false) const {
+    return i * get_output_i_offset(jcp, ignore_dw_conv)
+            + j * get_output_j_offset(jcp) + n * 4;
 }
 
 static int reg_accum_idx(
@@ -149,7 +150,7 @@ void jit_sse41_1x1_conv_kernel_f32::apply_postops(
         iterate(load_loop_blk, ur, [&](const int i, const int j, const int n) {
             const bool mask_flag = (2 * i + n) == load_loop_blk - 1;
             const size_t aux_output_offset
-                    = get_fwd_output_ptr_l_off(i, j, n) * sizeof(float);
+                    = get_fwd_output_ptr_l_off(i, j, n, true) * sizeof(float);
             const auto vmm_idx = reg_accum_idx(load_loop_blk, i, j, n);
             vmm_idxs.emplace(vmm_idx);
 
@@ -160,9 +161,14 @@ void jit_sse41_1x1_conv_kernel_f32::apply_postops(
             if (mask_flag) rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
         });
         const injector_utils::register_preserve_guard_t register_guard(
-                this, {abi_param1});
+                this, {abi_param1, aux_reg_output_data});
         const size_t reg_guard_stack_occupied
                 = register_guard.stack_space_occupied();
+        if (jcp.with_dw_conv) {
+            add(aux_reg_output_data,
+                    ptr[rsp + reg_dw_binary_output_off
+                            + reg_guard_stack_occupied]);
+        }
         mov(abi_param1,
                 ptr[rsp + reg_abi_param1_backup + reg_guard_stack_occupied]);
 
@@ -452,6 +458,8 @@ void jit_sse41_1x1_conv_kernel_f32::generate() {
         const auto zeroed_reg = r15;
         xor_(zeroed_reg, zeroed_reg);
         mov(ptr[rsp + reg_binary_post_op_acc_off], zeroed_reg);
+        if (jcp.with_dw_conv)
+            mov(ptr[rsp + reg_dw_binary_output_off], zeroed_reg);
     }
 
     mov(reg_bcast_data, ptr[param1 + GET_OFF(bcast_data)]);
@@ -474,6 +482,10 @@ void jit_sse41_1x1_conv_kernel_f32::generate() {
     mov(reg_oc_off, ptr[param1 + GET_OFF(oc_off)]);
 
     auto generate_load_loop_body = [=](int load_loop_blk) {
+        const size_t offst_with_dw_conv
+                = get_load_loop_output_fwd_offset(jcp, load_loop_blk);
+        const size_t offst_wo_dw_conv
+                = get_load_loop_output_fwd_offset(jcp, load_loop_blk, true);
         generate_bcast_loop(load_loop_blk);
         add(reg_load_data, load_loop_blk * jcp.load_loop_load_step);
         switch (jcp.prop_kind) {
@@ -481,8 +493,7 @@ void jit_sse41_1x1_conv_kernel_f32::generate() {
             case forward_inference:
                 add(reg_bias_data,
                         load_loop_blk * jcp.oc_block * sizeof(float));
-                add(reg_output_data,
-                        get_load_loop_output_fwd_offset(jcp, load_loop_blk));
+                add(reg_output_data, offst_with_dw_conv);
                 if (jcp.with_binary) {
                     mov(aux_reg_load_data,
                             EVEX_compress_addr(
@@ -490,6 +501,14 @@ void jit_sse41_1x1_conv_kernel_f32::generate() {
                     add(aux_reg_load_data, jcp.load_block * load_loop_blk);
                     mov(EVEX_compress_addr(rsp, reg_binary_post_op_acc_off),
                             aux_reg_load_data);
+                    if (jcp.with_dw_conv) {
+                        mov(aux_reg_load_data,
+                                ptr[rsp + reg_dw_binary_output_off]);
+                        add(aux_reg_load_data,
+                                offst_wo_dw_conv - offst_with_dw_conv);
+                        mov(ptr[rsp + reg_dw_binary_output_off],
+                                aux_reg_load_data);
+                    }
                 }
                 break;
             case backward_data:
@@ -711,11 +730,14 @@ status_t jit_sse41_1x1_conv_kernel_f32::init_conf(jit_1x1_conv_conf_t &jcp,
         jcp.load_loop_load_step = jcp.ic * jcp.oc_block * sizeof(float);
         jcp.load_loop_iter_step = jcp.oc_block;
 
-        load_blocking = 120; // assumes the kernel is jcp.ur x 3
-        load_blocking_max = 144;
+        load_blocking = is_data_layout_nxc
+                ? jcp.load_dim
+                : 120; // assumes the kernel is jcp.ur x 3
+        load_blocking_max = is_data_layout_nxc ? jcp.load_dim : 144;
         bcast_blocking = 128; // affects load balancing across threads
         bcast_blocking_max = 192;
-        reduce_blocking = 128; // affects L1$ utilization
+        reduce_blocking = is_data_layout_nxc ? jcp.reduce_dim
+                                             : 128; // affects L1$ utilization
     } else if (jcp.prop_kind == backward_data) {
         jcp.reduce_dim = jcp.oc;
         jcp.reduce_block = jcp.oc_block;

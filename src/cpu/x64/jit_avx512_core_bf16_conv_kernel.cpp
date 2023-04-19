@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2023 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -3663,6 +3663,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32 ::compute_od_loop_common(
     const auto filter_shift = get_kernel_offset(0, jcp.kh * jcp.kw);
     const auto src_shift = get_src_offset(0, 0, jcp.ih);
     const auto ddst_shift = get_ddst_offset(0, jcp.oh);
+    const dim_t src_common_shift = src_shift * jcp.stride_d;
 
     const int kd_front_pad = nstl::max(0, jcp.f_pad);
     const int kd_back_pad = nstl::max(0, jcp.kd - jcp.f_pad - jcp.id);
@@ -3731,7 +3732,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32 ::compute_od_loop_common(
             if (jcp.f_pad % jcp.stride_d != 0) {
                 int src_corr = jcp.stride_d - jcp.f_pad % jcp.stride_d;
                 add(reg_kernel, filter_shift * src_corr);
-                add(reg_src_d, src_shift * src_corr);
+                // for src, subtract src_common_shift that gets added later.
+                add(reg_src_d, src_shift * src_corr - src_common_shift);
             }
         } else {
             /* Filter still overlaps padding (complete reset) */
@@ -3740,7 +3742,6 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32 ::compute_od_loop_common(
 
         /* Apply correction */
         mov(reg_kd_count, src_ker_overlap);
-        jmp(common_block_label);
 
         L(fpad_end_label);
     }
@@ -3768,7 +3769,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32 ::compute_od_loop_common(
     }
 
     /* Compute middle block */
-    add(reg_src_d, src_shift * jcp.stride_d);
+    add(reg_src_d, src_common_shift);
 
     /* Execute common block and loop */
     L(common_block_label);

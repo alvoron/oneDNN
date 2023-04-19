@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2017-2022 Intel Corporation
+* Copyright 2017-2023 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -75,6 +75,10 @@ struct jit_sse41_1x1_convolution_fwd_t : public primitive_t {
             jit_sse41_1x1_conv_kernel_f32::init_scratchpad(scratchpad, jcp_);
 
             return status::success;
+        }
+
+        const memory_desc_t *dst_1x1_md(int index = 0) const {
+            return cpu_convolution_fwd_pd_t::dst_md(index);
         }
 
         const memory_desc_t *dst_md(int index = 0) const override {
@@ -249,7 +253,7 @@ struct jit_sse41_1x1_convolution_fwd_t : public primitive_t {
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
                 new jit_sse41_1x1_conv_kernel_f32(
-                        pd()->jcp_, *pd()->attr(), *pd()->dst_md(0))));
+                        pd()->jcp_, *pd()->attr(), *pd()->dst_1x1_md(0))));
         CHECK(kernel_->create_kernel());
         if (pd()->jcp_.with_dw_conv) {
             CHECK(safe_ptr_assign(kernel_dw_,

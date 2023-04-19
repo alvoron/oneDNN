@@ -386,12 +386,19 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
             auto t1 = tmp1.subregister(t1_offset, dst_type);
             auto t2 = tmp2.subregister(t2_offset, dst_type);
 
-            if (dst_stride_bytes >= tmp_stride_bytes && esize > 1) {
+            if (esize == 1) {
+                plan(mov, 2 | host->sat, t1(tmp_stride), s);
+                plan(mov, 1, d, t1);
+                continue;
+            }
+
+            // Operands are already dword aligned as required by F-pipe
+            if (dst_stride_bytes >= tmp_stride_bytes) {
                 plan(mov, esize | host->sat, d(dst_stride), s(src_stride));
                 continue;
             }
-            auto wa_esize = std::max(2, esize);
-            plan(mov, wa_esize | host->sat, t1(tmp_stride), s(src_stride));
+
+            plan(mov, esize | host->sat, t1(tmp_stride), s(src_stride));
             if (t1_offset != t2_offset)
                 plan(mov, esize, t2(tmp_stride), t1(tmp_stride));
             else
@@ -528,11 +535,9 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
     // - s8/u8 must be DW-strided: use temporary
     bool d_or_f_to_b = (src_d || src_f) && dst_b;
     bool b_to_d_or_f = (dst_d || dst_f) && src_b;
-    bool hf_to_b = src_hf && dst_b;
-    if (d_or_f_to_b || b_to_d_or_f || hf_to_b) {
+    if (d_or_f_to_b || b_to_d_or_f) {
         if (dst_d || dst_f) ir_assert(dst_stride_bytes == 4);
         if (src_d || src_f) ir_assert(src_stride_bytes == 4);
-        if (src_hf) ir_assert(utils::one_of(src_stride_bytes, 2, 4));
         if (dst_b) ir_assert(utils::one_of(dst_stride_bytes, 1, 4));
         if (src_b) ir_assert(utils::one_of(src_stride_bytes, 1, 4));
         int step = get_step();
@@ -547,13 +552,18 @@ void emit_reorder_1d_tile(ngen::HW hw, GeneratorT *host,
 
             auto s = src.subregister(i, esize, src_stride_bytes);
             auto d = dst.subregister(i, esize, dst_stride_bytes);
-            if (src_d || src_f || src_hf) {
+            if (src_d || src_f) {
                 // d -> b.
-                if (dst_stride_bytes == 1 || esize == 1) {
+                if (esize == 1) {
+                    // relaxed F-pipe alignment requirements for f32 broadcast
+                    auto t = tmp1.subregister(0, dst_type);
+                    plan(mov, 2 | host->sat, t(4), s);
+                    plan(mov, 1, d, t);
+                } else if (dst_stride_bytes == 1) {
                     auto offset_bytes = src_f ? s.getByteOffset()
                                               : 4 * (d.getByteOffset() % 16);
                     auto t = tmp1.subregister(offset_bytes, dst_type)(4);
-                    plan(mov, std::max(2, esize) | host->sat, t, s(src_stride));
+                    plan(mov, esize | host->sat, t, s(src_stride));
                     if (offset_bytes != 4 * (d.getByteOffset() % 16)) {
                         auto t2 = tmp2.subregister(
                                 4 * (d.getByteOffset() % 16), dst_type)(4);
@@ -841,11 +851,10 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
 // allocated. For example: A -> T -> B or A -> B -> T -> B
 class reorder_2d_impl_t {
 public:
-    reorder_2d_impl_t(
-            ngen::HW hw, const layout_t &src_layout, const layout_t &dst_layout)
-        : hw_(hw), src_(src_layout), dst_(dst_layout) {
+    reorder_2d_impl_t(ngen::HW hw, tensor_t tile, const layout_t &src_layout,
+            const layout_t &dst_layout)
+        : hw_(hw), src_(src_layout), dst_(dst_layout), tile_(std::move(tile)) {
         ir_assert(src_.type() == dst_.type());
-        tile_ = find_2d_tile(src_, dst_);
     }
 
     const tensor_t &tile() const { return tile_; }
@@ -911,62 +920,6 @@ public:
             prev_layout = next_layout;
             prev_rd = next_rd;
         }
-    }
-
-    // Returns the biggest common 2D tile that is innermost for both layouts.
-    // The returned tile contains at most max_elems elements. If match_outer is
-    // true, then outer parts of both layouts are required to be equal.
-    // Returns an empty tensor if the requested tile is not found.
-    static tensor_t find_2d_tile(const layout_t &a, const layout_t &b,
-            int max_elems = std::numeric_limits<int>::max(),
-            bool match_outer = false) {
-        std::vector<dim_t> tile_dims(a.ndims(), 1);
-        if (a.blocks().empty() || b.blocks().empty())
-            return tensor_t(tile_dims);
-
-        auto non_one_ndims = [](const tensor_t &t) {
-            int ret = 0;
-            for (dim_t d : t.dims())
-                ret += (d != 1 ? 1 : 0);
-            return ret;
-        };
-
-        layout_iterator_t a_it(a);
-        layout_iterator_t b_it(b);
-
-        tensor_t max_tile;
-        for (;;) {
-            auto a_tile = a_it.tile();
-            auto b_tile = b_it.tile();
-            if (non_one_ndims(a_tile) > 2 || non_one_ndims(b_tile) > 2) break;
-            if (!a.map(a_tile).is_dense() || !b.map(b_tile).is_dense()) break;
-            dim_t a_elems = a_tile.elems();
-            dim_t b_elems = b_tile.elems();
-
-            bool tile_ok = true;
-            if (!a_tile.is_equal(b_tile)) tile_ok = false;
-            if (match_outer) {
-                auto a_outer = a_it.outer_layout();
-                auto b_outer = b_it.outer_layout();
-                if (!a_outer.is_equal(b_outer)) tile_ok = false;
-            }
-            if (tile_ok) {
-                if (a_it.nblocks() > max_tile_blocks) break;
-                if (b_it.nblocks() > max_tile_blocks) break;
-                if (a_tile.elems() > max_elems) break;
-                max_tile = a_tile;
-                if (!a_it.has_next() || !b_it.has_next()) break;
-                ++a_it;
-                ++b_it;
-            } else if (a_elems <= b_elems) {
-                if (!a_it.has_next()) break;
-                ++a_it;
-            } else {
-                if (!b_it.has_next()) break;
-                ++b_it;
-            }
-        }
-        return max_tile;
     }
 
     static const int max_tile_blocks = 4;
@@ -1389,18 +1342,22 @@ private:
     static std::vector<tensor_t> find_2d_dense_tiles(
             const layout_t &a, const layout_t &b) {
         using tile_pair_t = std::array<tensor_t, 2>;
+        static constexpr int max_tile_blocks
+                = reorder_2d_impl_t::max_tile_blocks;
         auto dense_2d_blocks = []() {
             dim_t stride = 1;
             int non_one_dims = 0;
+            int count = 0;
             std::unordered_set<int> seen;
             return [=](const block_t &b) mutable {
                 if ((dim_t)b.stride != stride) return false;
                 if (b.block != 1) {
+                    count++;
                     stride *= b.block;
                     auto ret = seen.insert(b.dim_idx);
                     if (ret.second) non_one_dims++;
                 }
-                return non_one_dims <= 2;
+                return non_one_dims <= 2 && count <= max_tile_blocks;
             };
         };
 
@@ -1445,6 +1402,7 @@ private:
         const auto type = to_ngen(src_layout_.type());
         for (const auto &tile : find_2d_dense_tiles(src_layout_, dst_layout_)) {
             if (tile.is_empty()) continue;
+            if (tile.elems() < 4) break;
             auto src_tile_layout = src_layout_.map(tile);
             auto dst_tile_layout = dst_layout_.map(tile);
             if (!dst_tile_layout.is_dense()) continue;
@@ -1463,9 +1421,7 @@ private:
             // Allocation succeeded, can proceed further.
             scope.safeRelease(dummy);
 
-            reorder_2d_impl_t r(hw_, src_tile_layout, dst_tile_layout);
-            if (r.tile().elems() < 4) break;
-
+            reorder_2d_impl_t r(hw_, tile, src_tile_layout, dst_tile_layout);
             src_layout_.for_each_tile(
                     tile, [&](const std::vector<dim_t> &start) {
                         auto src_off

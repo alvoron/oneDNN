@@ -800,9 +800,14 @@ status_t init_tensor_layouts(conv_config_t &cfg, convolution_pd_t *pd) {
     }
 
     // Allow internal reorder for plain weights.
-    for (auto *t : {"abx", "axb", "xba"}) {
-        if (matches_tag(wei_md, t)) {
-            user_wei_tag = t;
+    std::vector<const char *> plain_non_group_wei_tags = {"abx", "axb", "xba"};
+    std::vector<const char *> plain_group_wei_tags = {"abcx", "abxc", "axcb"};
+    auto &plain_wei_tags = (prb.with_groups ? plain_group_wei_tags
+                                            : plain_non_group_wei_tags);
+    ir_assert(plain_non_group_wei_tags.size() == plain_group_wei_tags.size());
+    for (size_t i = 0; i < plain_wei_tags.size(); i++) {
+        if (matches_tag(wei_md, plain_wei_tags[i])) {
+            user_wei_tag = plain_non_group_wei_tags[i];
             break;
         }
     }
@@ -1016,7 +1021,7 @@ const memory_desc_t *output_md(const convolution_pd_t *pd) {
 
 void maybe_override_from_lookup_table(conv_config_t &cfg) {
 #ifdef GEN_CONV_DEBUG
-    if (ir_utils::getenv_bool("lookup", true)) return;
+    if (!ir_utils::getenv_bool("lookup", true)) return;
 #endif
     static conv_config_lookup_table_t table;
     auto *s_params = table.find(cfg);
@@ -2276,6 +2281,13 @@ bool use_conv_plan(const conv_config_t &cfg) {
 
 conv_config_t::conv_config_t() = default;
 conv_config_t::~conv_config_t() = default;
+
+int conv_config_t::reserved_regs() const {
+    int ret = constants::reserved_regs_default;
+    // XXX: Workaround for incorrect register estimation.
+    if (prb().is_bwd_w && prb().mb % 16 != 0) ret += 4;
+    return ret;
+}
 
 void conv_config_t::override_set(const std::string &s, bool is_env) {
     std::vector<param_t *> params;

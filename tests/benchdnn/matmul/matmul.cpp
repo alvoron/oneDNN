@@ -196,9 +196,7 @@ int init_prim_ref(
 // sizes.
 int fill_csr_data(data_kind_t kind, const prb_t *prb, dnn_mem_t &mem_dt,
         dnn_mem_t &mem_fp, res_t *res) {
-    if (query_md_num_handles(mem_dt.md_) != 3
-            || query_md_num_handles(mem_dt.md_) != 3)
-        return FAIL;
+    if (query_md_num_handles(mem_dt.md_) != 3) return FAIL;
 
     if (kind != SRC && kind != WEI) return FAIL;
 
@@ -382,6 +380,12 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_sum_po(prb->attr, res, prb->dst_dt());
 
     if (is_gpu()) {
+#ifdef DNNL_EXPERIMENTAL_SPARSE
+        if (!prb->sparse_options.is_def()) {
+            res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+            return;
+        }
+#endif
         // GPU supports only single zero-point per tensor.
         if (prb->attr.zero_points.get(DNNL_ARG_SRC).policy != policy_t::COMMON
                 || prb->attr.zero_points.get(DNNL_ARG_DST).policy
@@ -429,6 +433,15 @@ void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {
+// oneDNN doesn't provide SYCL interoperability API for creating a sparse
+// memory therefore all SYCL cases must be skipped.
+#ifdef DNNL_EXPERIMENTAL_SPARSE
+    if (is_sycl_engine(get_test_engine()) && !prb->sparse_options.is_def()) {
+        res->state = SKIPPED, res->reason = CASE_NOT_SUPPORTED;
+        return;
+    }
+#endif
+
     // Zero-points for non-integral data type does not make sense
     if (!prb->attr.zero_points.is_def() && prb->wei_dt() != dnnl_s8) {
         res->state = SKIPPED, res->reason = INVALID_CASE;

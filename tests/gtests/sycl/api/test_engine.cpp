@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2023 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -58,11 +58,15 @@ protected:
         for (auto &plat : platform::get_platforms()) {
             for (auto &dev : plat.get_devices()) {
                 if (dev.is_gpu()) {
-                    if (!gpu_dev) {
+                    if (!gpu_dev
+                            && dev.get_backend()
+                                    == sycl::backend::ext_oneapi_level_zero) {
                         gpu_dev.reset(new device(dev));
                         gpu_ctx.reset(new context(*gpu_dev));
                     }
-                    if (!gpu_only_dev && !dev.is_cpu()) {
+                    if (!gpu_only_dev && !dev.is_cpu()
+                            && dev.get_backend()
+                                    == sycl::backend::ext_oneapi_level_zero) {
                         gpu_only_dev.reset(new device(dev));
                         gpu_only_ctx.reset(new context(*gpu_only_dev));
                     }
@@ -167,8 +171,16 @@ TEST_P(sycl_engine_test, SubDevice) {
             [&]() {
                 for (const auto &sub_dev_i : sub_dev) {
                     engine eng;
+                    // Test case when each sub-device has its own context.
                     ASSERT_NO_THROW(eng
                             = sycl_interop::make_engine(sub_dev_i, sub_ctx));
+
+                    // Test case when a sub-device is used with the default
+                    // context.
+                    ASSERT_NO_THROW(
+                            eng = sycl_interop::make_engine(sub_dev_i,
+                                    sub_dev_i.get_platform()
+                                            .ext_oneapi_get_default_context()));
 
                     memory::dims tz = {2, 3, 4, 5};
                     memory::desc mem_d(tz, memory::data_type::f32,

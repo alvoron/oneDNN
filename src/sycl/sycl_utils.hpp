@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2022 Intel Corporation
+* Copyright 2019-2023 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -119,6 +119,9 @@ device_id_t sycl_device_id(const ::sycl::device &dev);
 status_t check_device(engine_kind_t eng_kind, const ::sycl::device &dev,
         const ::sycl::context &ctx);
 
+bool dev_ctx_consistency_check(
+        const ::sycl::device &dev, const ::sycl::context &ctx);
+
 inline bool is_intel_device(const ::sycl::device &dev) {
     const int intel_vendor_id = 0x8086;
     auto vendor_id = dev.get_info<::sycl::info::device::vendor_id>();
@@ -128,6 +131,21 @@ inline bool is_intel_device(const ::sycl::device &dev) {
 inline bool is_intel_platform(const ::sycl::platform &plat) {
     std::string plat_name = plat.get_info<::sycl::info::platform::name>();
     return plat_name.find("Intel") != std::string::npos;
+}
+
+inline bool is_subdevice(const ::sycl::device &dev) {
+    return dev.get_info<::sycl::info::device::partition_type_property>()
+            != ::sycl::info::partition_property::no_partition;
+}
+
+inline ::sycl::device get_parent_device(const ::sycl::device &dev) {
+    // Search for the top level device.
+    auto parent_device = dev;
+    while (is_subdevice(parent_device)) {
+        parent_device
+                = parent_device.get_info<::sycl::info::device::parent_device>();
+    }
+    return parent_device;
 }
 
 } // namespace sycl
